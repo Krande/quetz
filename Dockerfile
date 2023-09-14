@@ -23,5 +23,6 @@ EXPOSE 8000
 
 # The following command assumes that a deployment has been initialized
 # in the /quetz-deployment volume
-RUN mkdir -p /quetz-deployment
-CMD ["quetz", "start", "/quetz-deployment", "--host", "0.0.0.0", "--port", "8000"]
+#RUN mkdir -p /quetz-deployment
+#CMD ["quetz", "start", "/quetz-deployment", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["quetz", "run", "/quetz-deployment", "--host", "0.0.0.0", "--port", "8000"]
