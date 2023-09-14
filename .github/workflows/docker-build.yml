@@ -27,4 +27,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: krande/quetz-server:v10.1
+          tags: krande/quetz-server:v10.2
