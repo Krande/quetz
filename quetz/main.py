@@ -1724,6 +1724,22 @@ def invalid_api():
 
 
 @app.on_event("startup")
+def start_reindex_packages_from_pkg_store():
+    from .tasks.reindexing import reindex_packages_from_store
+    db_manager = contextmanager(get_db)
+
+    with TicToc("Reindex packages"):
+        with db_manager(config) as db:
+            dao = get_dao(db)
+            admin = dao.create_user_with_role('startupsys', 'owner')
+
+            pkg_store = config.get_package_store()
+            for channel in pkg_store.list_channels():
+                reindex_packages_from_store(dao, config, channel, admin.id)
+            dao.delete_user(admin.id)
+
+
+@app.on_event("startup")
 def start_sync_download_counts():
     global download_counts
     wait_time = 1  # seconds
