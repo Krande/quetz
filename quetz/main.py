@@ -1379,6 +1379,8 @@ async def post_upload(
         body.write(chunk)
         upload_hash.update(chunk)
 
+    logger.debug(f"Uploaded file {filename} with checksum {upload_hash.hexdigest()} complete")
+
     if sha256 and upload_hash.hexdigest() != sha256:
         raise HTTPException(
             status_code=status.HTTP_406_NOT_ACCEPTABLE, detail="Wrong SHA256 checksum"
