@@ -79,6 +79,10 @@ class PackageStore(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def list_channels(self) -> List[str]:
+        pass
+
+    @abc.abstractmethod
     def url(self, channel: str, src: str, expires: int = 0) -> str:
         pass
 
@@ -573,6 +577,13 @@ class AzureBlobStore(PackageStore):
             return [
                 remove_prefix(f, channel_container) for f in fs.find(channel_container)
             ]
+
+    def list_channels(self) -> List[str]:
+        with self._get_fs() as fs:
+            for d in fs.ls(self.container_prefix):
+                if not fs.isdir(d):
+                    continue
+                yield d.replace(f"{self.container_prefix}", "")
 
     def url(self, channel: str, src: str, expires=3600):
         # expires is in seconds, so the default is 60 minutes!
