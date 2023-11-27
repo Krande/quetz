@@ -1,6 +1,7 @@
 name: test docker build
 
 on:
+  push:
   workflow_dispatch:
 
 
