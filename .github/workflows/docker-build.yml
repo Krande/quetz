@@ -1,9 +1,8 @@
 name: test docker build
 
 on:
-  push:
-    branches:
-      - fixes/docs
+  workflow_dispatch:
+
 
 jobs:
   docker:
