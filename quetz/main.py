@@ -131,6 +131,19 @@ download_counts: Counter = Counter()
 DOWNLOAD_INCREMENT_DELAY_SECONDS = 10
 DOWNLOAD_INCREMENT_MAX_DOWNLOADS = 50
 
+@app.on_event("startup")
+def start_reindex_packages_from_pkg_store():
+    from .tasks.reindexing import reindex_all_packages_from_store
+
+    db_manager = contextmanager(get_db)
+
+    with TicToc("Reindex packages"):
+        with db_manager(config) as db:
+            dao = get_dao(db)
+            admin = dao.create_user_with_role('system', 'admin')
+
+            reindex_all_packages_from_store(dao, config, user_id=admin.id)
+            dao.delete_user(admin.id)
 
 class CondaTokenMiddleware(BaseHTTPMiddleware):
     """Removes /t/<QUETZ_API_KEY> prefix, adds QUETZ_APY_KEY to the headers and passes

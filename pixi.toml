@@ -1,0 +1,65 @@
+[project]
+name = "quetz-server"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.12"
+pip = "*"
+fastapi = "*"
+typer = "*"
+authlib = "0.15.5"
+psycopg2 = "*"
+httpx = ">=0.22.0"
+sqlalchemy = "*"
+sqlalchemy-utils = "*"
+sqlite = "*"
+python-multipart = "*"
+uvicorn = "*"
+zstandard = "*"
+conda-build = "*"
+appdirs = "*"
+toml = "*"
+fsspec = "*"
+requests = "*"
+h2 = "*"
+pluggy = "*"
+jinja2 = "*"
+itsdangerous = "*"
+alembic = "*"
+zchunk = "*"
+s3fs = "*"
+gcsfs = ">=2022.03"
+sphinx = "*"
+sphinx-book-theme = ">=0.3"
+tenacity = "*"
+xattr = "*"
+aiofiles = "*"
+aioshutil = "*"
+pyyaml = "*"
+ujson = "*"
+prometheus_client = "*"
+pamela = "*"
+typing_extensions = "*"
+adlfs = "*"
+azure-storage-blob = "12.18.1"
+importlib_metadata = "*"
+pre-commit = "*"
+pytest = "*"
+pytest-mock = "*"
+rq = "*"
+libcflib = "*"
+mamba = "*"
+conda-content-trust = "*"
+pyinstrument = "*"
+pytest-asyncio = "*"
+pytest-timeout = "*"
+pydantic = ">=2"
+quetz-frontend = "0.4.1"
+
+[pypi-dependencies]
+quetz-server = { path = ".", editable = true}
+
+[tasks]
+dev = { cmd = ["python", "run", "test_quetz", "--reload", "--create-conf", "--delete"], cwd = "." }
+frontend = { cmd = ["quetz-frontend", "link-frontend" ]}

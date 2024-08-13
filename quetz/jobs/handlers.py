@@ -7,6 +7,8 @@ JOB_HANDLERS = {
     "validate_packages": indexing.validate_packages,
     "generate_indexes": indexing.update_indexes,
     "reindex": reindexing.reindex_packages_from_store,
+    "reindex_all": reindexing.reindex_all_packages_from_store,
+    "check_doorstep": reindexing.check_doorstep,
     "synchronize_metrics": metrics_tasks.synchronize_metrics_from_mirrors,
     "pkgstore_cleanup": cleanup.cleanup_channel_db,
     "db_cleanup": cleanup.cleanup_temp_files,

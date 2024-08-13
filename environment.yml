@@ -39,10 +39,11 @@ dependencies:
   - prometheus_client
   - pamela
   - typing_extensions
-  - adlfs
+  - adlfs>=2024.7
+  - azure-storage-blob>=12.22.0
   - importlib_metadata
   - pre-commit
-  - pytest 7.*
+  - pytest
   - pytest-mock
   - rq
   - libcflib
@@ -52,5 +53,3 @@ dependencies:
   - pytest-asyncio
   - pytest-timeout
   - pydantic >=2
-  - pip:
-      - git+https://github.com/jupyter-server/jupyter_releaser.git@v2

@@ -26,3 +26,4 @@ test_quetz
 
 # OS
 .DS_Store
+/.pixi/

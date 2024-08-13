@@ -223,6 +223,8 @@ def config(config_str, config_dir, test_data_dir):
         dest = os.path.join(config_dir, filename)
         if os.path.isfile(full_path):
             shutil.copy(full_path, dest)
+        elif os.path.isdir(full_path) and full_path.endswith("imports"):
+            shutil.copytree(full_path, dest)
 
     Config._instances = {}
     config = Config()

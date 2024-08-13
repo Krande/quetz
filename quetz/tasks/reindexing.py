@@ -104,11 +104,11 @@ def chunks(lst, n):
     """Yield successive n-sized chunks from lst."""
 
     for i in range(0, len(lst), n):
-        yield lst[i : i + n]
+        yield lst[i: i + n]
 
 
 def reindex_packages_from_store(
-    dao: Dao, config: Config, channel_name: str, user_id, sync: bool = True
+        dao: Dao, config: Config, channel_name: str, user_id, sync: bool = True
 ):
     """Reindex packages from files in the package store"""
 
@@ -116,6 +116,9 @@ def reindex_packages_from_store(
 
     channel = dao.get_channel(channel_name)
     pkg_db = []
+    user_id = uuid_to_bytes(user_id)
+    pkgstore = config.get_package_store()
+
     if channel:
         if not sync:
             for package in channel.packages:
@@ -128,16 +131,23 @@ def reindex_packages_from_store(
                     pkg_db.append(f"{pv.platform}/{pv.filename}")
             dao.db.commit()
     else:
+        channels_config = pkgstore.get_channels_config()
+        is_private = False
+        description = "re-indexed from store"
+        if channels_config is not None:
+            channel_config = channels_config.get('channels', dict()).get(channel_name, dict())
+            is_private = channel_config.get("private", is_private)
+            description = channel_config.get("description", description)
+
         data = rest_models.Channel(
-            name=channel_name, description="re-indexed from store", private=True
+            name=channel_name, description=description, private=is_private
         )
-        channel = dao.create_channel(data, user_id, authorization.OWNER)
+        dao.create_channel(data, user_id, "owner")
 
     logger.debug(f"Reading package list for channel {channel_name}")
-    user_id = uuid_to_bytes(user_id)
-    pkgstore = config.get_package_store()
+
     all_files = pkgstore.list_files(channel_name)
-    pkg_files = [f for f in all_files if f.endswith(".tar.bz2")]
+    pkg_files = [f for f in all_files if f.endswith(".tar.bz2") or f.endswith(".conda")]
     nthreads = config.general_package_unpack_threads
 
     logger.debug(f"Found {len(pkg_db)} packages for channel {channel_name} in database")
@@ -177,5 +187,30 @@ def reindex_packages_from_store(
         except IntegrityError:
             dao.rollback()
             logger.error(f"Update index {channel_name} failed")
+
     dao.cleanup_channel_db(channel_name)
     dao.db.commit()
+
+
+def reindex_all_packages_from_store(
+        dao: Dao, config: Config, user_id, sync: bool = True
+) -> list[rest_models.Channel]:
+    """Reindex packages from files in the package store"""
+
+    logger.debug(f"Re-indexing ALL channels")
+
+    pkgstore = config.get_package_store()
+    channels = []
+    for channel_name in pkgstore.list_channels():
+        reindex_packages_from_store(dao, config, channel_name, user_id, sync)
+        channel = dao.get_channel(channel_name)
+        channels.append(channel)
+
+    return channels
+
+def check_doorstep(dao: Dao, config: Config, user_id, sync: bool = True):
+    pkgstore = config.get_package_store()
+    doorstep_dir = "imports"
+    files = list(pkgstore.get_doorstep_files(doorstep_dir))
+    logger.debug(f"Found {len(files)} files at your doorstep")
+    return files

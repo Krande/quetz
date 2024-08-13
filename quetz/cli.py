@@ -7,7 +7,6 @@ import random
 import shutil
 import subprocess
 import uuid
-from distutils.spawn import find_executable
 from enum import Enum
 from multiprocessing import get_context
 from pathlib import Path
@@ -41,6 +40,16 @@ from quetz.db_models import (
     Profile,
     User,
 )
+
+
+# Use shutil.which to find the path of an executable
+def find_executable(executable_name):
+    path = shutil.which(executable_name)
+    if path is None:
+        print(f"Executable '{executable_name}' not found.")
+    else:
+        print(f"Executable '{executable_name}' found at: {path}")
+    return path
 
 app = typer.Typer()
 

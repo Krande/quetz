@@ -200,7 +200,7 @@ class Supervisor:
                 and (job.updated + timedelta(seconds=job.repeat_every_seconds)) < now
             )
 
-            if job.items_spec is not None:
+            if job.items_spec is not None and job.items_spec != "":
                 # it's a "package-version job"
 
                 try:

@@ -110,7 +110,7 @@ class JobBase(BaseModel):
 class JobCreate(JobBase):
     """Create job spec"""
 
-    items_spec: str = Field(..., title="Item selector spec")
+    items_spec: Optional[str | None] = Field(None, title="Item selector spec")
 
 
 class JobUpdateModel(BaseModel):
@@ -129,7 +129,7 @@ class Job(JobBase):
 
     status: JobStatus = Field(None, title="Status of the job (running, paused, ...)")
 
-    items_spec: Optional[str] = Field(None, title="Item selector spec")
+    items_spec: Optional[str | None] = Field(None, title="Item selector spec")
     model_config = ConfigDict(from_attributes=True)
 
 

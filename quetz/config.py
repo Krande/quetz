@@ -3,8 +3,8 @@
 
 import logging
 import logging.config
+import json
 import os
-from distutils.util import strtobool
 from secrets import token_bytes
 from typing import Any, Dict, Iterable, List, NamedTuple, Optional, Type, Union
 
@@ -23,6 +23,21 @@ _user_dir = appdirs.user_config_dir("quetz")
 
 PAGINATION_LIMIT = 20
 
+def strtobool(val: str) -> int:
+    """
+    Convert a string representation of truth to 1 or 0.
+
+    True values are 'y', 'yes', 't', 'true', 'on', and '1';
+    False values are 'n', 'no', 'f', 'false', 'off', and '0'.
+    Raises ValueError if 'val' is anything else.
+    """
+    val = val.lower()
+    if val in {'y', 'yes', 't', 'true', 'on', '1'}:
+        return 1
+    elif val in {'n', 'no', 'f', 'false', 'off', '0'}:
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {val!r}")
 
 class ConfigEntry(NamedTuple):
     name: str
@@ -391,6 +406,32 @@ class Config:
                 return item
         return None
 
+    def _correct_environ_config_list_value(self, value: str) -> Union[str, List[str]]:
+        """Correct a value from environ that should be a list.
+
+        Parameters
+        ----------
+        value : str
+            The env variable value to correct.
+        Returns
+        -------
+        corrected_value : Union[str, List[str]]
+            Original value if no correction needed, else the corrected list of
+            strings value.
+        """
+        corrected_value = value
+        if isinstance(value, str):
+            if "[" in value:
+                corrected_value = json.loads(value)
+            elif "," in value and "[" not in value:
+                corrected_value = value.split(",")
+
+            # clear all empty strings in list
+            if isinstance(corrected_value, list):
+                corrected_value = [v for v in corrected_value if v]
+
+        return corrected_value
+
     def _get_environ_config(self) -> Dict[str, Any]:
         """Looks into environment variables if some matches with config_map.
 
@@ -408,18 +449,19 @@ class Config:
             if key.startswith(_env_prefix)
         }
         for var, value in quetz_var.items():
-            split_key = var.split("_")
-            config_key = split_key[1].lower()
+            value = self._correct_environ_config_list_value(value)
+            splitted_key = var.split('_')
+            config_key = splitted_key[1].lower()
             idx = 2
 
             # look for the first level of config_map.
             # It must be done in loop as the key itself can contains '_'.
             first_level = None
-            while idx < len(split_key):
+            while idx < len(splitted_key):
                 first_level = self._find_first_level_config(config_key)
                 if first_level:
                     break
-                config_key += f"_{ split_key[idx].lower()}"
+                config_key += f"_{ splitted_key[idx].lower()}"
                 idx += 1
 
             # no first_level found, the variable is useless.
@@ -430,7 +472,7 @@ class Config:
                 config[first_level.name] = value
             # the first level is a section.
             elif isinstance(first_level, ConfigSection):
-                entry = "_".join(split_key[idx:]).lower()
+                entry = "_".join(splitted_key[idx:]).lower()
                 # the entry does not exist in section, the variable is useless.
                 if entry not in [
                     section_entry.name for section_entry in first_level.entries
@@ -439,7 +481,7 @@ class Config:
                 # add the entry to the config.
                 if first_level.name not in config:
                     config[first_level.name]: Dict[str, Any] = {}
-                config[first_level.name]["_".join(split_key[idx:]).lower()] = value
+                config[first_level.name]["_".join(splitted_key[idx:]).lower()] = value
 
         return config
 

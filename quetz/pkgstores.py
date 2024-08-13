@@ -7,12 +7,14 @@ import calendar
 import contextlib
 import datetime
 import hashlib
+import json
 import logging
 import os
 import os.path as path
 import shutil
 import tempfile
 import warnings
+from collections.abc import Iterable
 from contextlib import contextmanager
 from os import PathLike
 from threading import Lock
@@ -79,6 +81,14 @@ class PackageStore(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def list_channels(self) -> List[str]:
+        pass
+
+    @abc.abstractmethod
+    def get_doorstep_files(self, doorstep_dir: str) -> Iterable[tuple[str, str, str]]:
+        pass
+
+    @abc.abstractmethod
     def url(self, channel: str, src: str, expires: int = 0) -> str:
         pass
 
@@ -110,7 +120,7 @@ class PackageStore(abc.ABC):
 
     @abc.abstractmethod
     def copy_file(
-        self, source_channel: str, source: str, target_channel: str, destination: str
+            self, source_channel: str, source: str, target_channel: str, destination: str
     ):
         """move file from source to destination in package store"""
 
@@ -189,7 +199,7 @@ class LocalStore(PackageStore):
             shutil.copyfileobj(package, f)
 
     async def add_package_async(
-        self, package: File, channel: str, destination: str
+            self, package: File, channel: str, destination: str
     ) -> None:
         full_path = path.join(self.channels_dir, channel, destination)
         self.fs.makedirs(path.dirname(full_path), exist_ok=True)
@@ -198,7 +208,7 @@ class LocalStore(PackageStore):
             await f.write(package.read())
 
     def add_file(
-        self, data: Union[str, bytes], channel: str, destination: StrPath
+            self, data: Union[str, bytes], channel: str, destination: StrPath
     ) -> None:
         mode = "w" if isinstance(data, str) else "wb"
         with self._atomic_open(channel, destination, mode) as f:
@@ -214,7 +224,7 @@ class LocalStore(PackageStore):
         )
 
     def copy_file(
-        self, source_channel: str, source: str, target_channel: str, destination: str
+            self, source_channel: str, source: str, target_channel: str, destination: str
     ):
         with self._atomic_open(target_channel, destination) as f:
             package = self.fs.open(
@@ -232,6 +242,18 @@ class LocalStore(PackageStore):
         channel_dir = os.path.join(self.channels_dir, channel)
         return [os.path.relpath(f, channel_dir) for f in self.fs.find(channel_dir)]
 
+    def list_channels(self) -> List[str]:
+        for ch in self.fs.ls(self.channels_dir):
+            yield ch
+
+    def get_doorstep_files(self, doorstep_dir: str) -> list[tuple[str, str, str]]:
+        for root, directories, files in self.fs.walk(doorstep_dir):
+            for fi in files:
+                if self.fs.isfile(fi):
+                    channel = root.split('/')[-1]
+                    yield fi, channel, root
+
+
     def url(self, channel: str, src: str, expires=0):
         if self.redirect_enabled:
             # generate url + secret if necessary
@@ -241,8 +263,8 @@ class LocalStore(PackageStore):
                     url, self.redirect_secret, self.redirect_expiration
                 )
                 return (
-                    path.join(self.redirect_endpoint, url)
-                    + f"?md5={md5hash}&expires={expires_by}"
+                        path.join(self.redirect_endpoint, url)
+                        + f"?md5={md5hash}&expires={expires_by}"
                 )
 
             return path.join(self.redirect_endpoint, self.channels_dir, channel, src)
@@ -375,7 +397,7 @@ class S3Store(PackageStore):
                 shutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     async def add_package_async(
-        self, package: File, channel: str, destination: str
+            self, package: File, channel: str, destination: str
     ) -> None:
         import s3fs
 
@@ -390,7 +412,7 @@ class S3Store(PackageStore):
             await aioshutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     def add_file(
-        self, data: Union[str, bytes], channel: str, destination: StrPath
+            self, data: Union[str, bytes], channel: str, destination: StrPath
     ) -> None:
         if isinstance(data, str):
             mode = "w"
@@ -422,7 +444,7 @@ class S3Store(PackageStore):
             )
 
     def copy_file(
-        self, source_channel: str, source: str, target_channel: str, destination: str
+            self, source_channel: str, source: str, target_channel: str, destination: str
     ):
         source_channel_bucket = self._bucket_map(source_channel)
         target_channel_bucket = self._bucket_map(target_channel)
@@ -440,7 +462,7 @@ class S3Store(PackageStore):
     def list_files(self, channel: str):
         def remove_prefix(text, prefix):
             if text.startswith(prefix):
-                return text[len(prefix) :].lstrip("/")  # noqa: E203
+                return text[len(prefix):].lstrip("/")  # noqa: E203
             return text
 
         channel_bucket = self._bucket_map(channel)
@@ -513,6 +535,22 @@ class AzureBlobStore(PackageStore):
     def _container_map(self, name):
         return f"{self.container_prefix}{name}{self.container_suffix}"
 
+    def get_channels_config(self) -> dict | None:
+        """Returns a json describing the defaults per channel. ie. the description and if it is private"""
+        channel_json_file = "channel_config.json"
+        channel_json_file_path = f"{self.container_prefix}{channel_json_file}"
+        with self._get_fs() as fs:
+            if fs.exists(channel_json_file_path) is False:
+                return None
+            with fs.open(channel_json_file_path) as pkg:
+                return json.loads(pkg.read())
+
+    def get_doorstep_files(self, doorstep_dir) -> list[tuple[str, str, str]]:
+        with self._get_fs() as fs:
+            for fp in fs.find(doorstep_dir):
+                channel, fi = fp.split('/')
+                yield fi, channel, fp
+
     def create_channel(self, name):
         """Create the container if one doesn't already exist
 
@@ -540,7 +578,7 @@ class AzureBlobStore(PackageStore):
                 shutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     async def add_package_async(
-        self, package: File, channel: str, destination: str
+            self, package: File, channel: str, destination: str
     ) -> None:
         import adlfs
 
@@ -555,7 +593,7 @@ class AzureBlobStore(PackageStore):
             await aioshutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     def add_file(
-        self, data: Union[str, bytes], channel: str, destination: StrPath
+            self, data: Union[str, bytes], channel: str, destination: StrPath
     ) -> None:
         if isinstance(data, str):
             mode = "w"
@@ -587,7 +625,7 @@ class AzureBlobStore(PackageStore):
             )
 
     def copy_file(
-        self, source_channel: str, source: str, target_channel: str, destination: str
+            self, source_channel: str, source: str, target_channel: str, destination: str
     ):
         source_channel_container = self._container_map(source_channel)
         target_channel_container = self._container_map(target_channel)
@@ -605,7 +643,7 @@ class AzureBlobStore(PackageStore):
     def list_files(self, channel: str):
         def remove_prefix(text, prefix):
             if text.startswith(prefix):
-                return text[len(prefix) :].lstrip("/")  # noqa: E203
+                return text[len(prefix):].lstrip("/")  # noqa: E203
             return text
 
         channel_container = self._container_map(channel)
@@ -614,6 +652,13 @@ class AzureBlobStore(PackageStore):
             return [
                 remove_prefix(f, channel_container) for f in fs.find(channel_container)
             ]
+
+    def list_channels(self) -> List[bytes]:
+        with self._get_fs() as fs:
+            for d in fs.ls(self.container_prefix):
+                if not fs.isdir(d):
+                    continue
+                yield d.replace(f"{self.container_prefix}", "").replace("/", "")
 
     def url(self, channel: str, src: str, expires=3600):
         # expires is in seconds, so the default is 60 minutes!
@@ -715,7 +760,7 @@ class GoogleCloudStorageStore(PackageStore):
                 shutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     async def add_package_async(
-        self, package: File, channel: str, destination: str
+            self, package: File, channel: str, destination: str
     ) -> None:
         import gcsfs
 
@@ -731,7 +776,7 @@ class GoogleCloudStorageStore(PackageStore):
             await aioshutil.copyfileobj(package, pkg, 10 * 1024 * 1024)
 
     def add_file(
-        self, data: Union[str, bytes], channel: str, destination: StrPath
+            self, data: Union[str, bytes], channel: str, destination: StrPath
     ) -> None:
         if isinstance(data, str):
             mode = "w"
@@ -767,7 +812,7 @@ class GoogleCloudStorageStore(PackageStore):
             )
 
     def copy_file(
-        self, source_channel: str, source: str, target_channel: str, destination: str
+            self, source_channel: str, source: str, target_channel: str, destination: str
     ):
         source_channel_container = self._bucket_map(source_channel)
         target_channel_container = self._bucket_map(target_channel)
@@ -786,7 +831,7 @@ class GoogleCloudStorageStore(PackageStore):
     def list_files(self, channel: str):
         def remove_prefix(text, prefix):
             if text.startswith(prefix):
-                return text[len(prefix) :].lstrip("/")  # noqa: E203
+                return text[len(prefix):].lstrip("/")  # noqa: E203
             return text
 
         channel_container = self._bucket_map(channel)
@@ -800,8 +845,8 @@ class GoogleCloudStorageStore(PackageStore):
         # expires is in seconds, so the default is 60 minutes!
         with self._get_fs() as fs:
             expiration_timestamp = (
-                int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp())
-                + expires
+                    int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp())
+                    + expires
             )
             redirect_url = fs.sign(
                 path.join(self._bucket_map(channel), src), expiration_timestamp

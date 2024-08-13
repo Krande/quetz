@@ -6,7 +6,7 @@ from quetz.db_models import PackageVersion
 from quetz.pkgstores import PackageStore
 from quetz.rest_models import Channel
 from quetz.tasks.indexing import validate_packages
-from quetz.tasks.reindexing import reindex_packages_from_store
+from quetz.tasks.reindexing import reindex_packages_from_store, reindex_all_packages_from_store, check_doorstep
 
 
 @pytest.fixture
@@ -80,6 +80,52 @@ def test_reindex_package_files(
     assert len(repodata["packages"]) == 2
     assert set(repodata["packages"].keys()) == set(package_filenames)
 
+def test_reindex_all_package_files(
+    config,
+    user,
+    package_files,
+    db,
+    dao,
+    pkgstore: PackageStore,
+    package_filenames,
+    remove_package_versions,
+):
+    user_id = user.id
+    channels = reindex_all_packages_from_store(dao, config, user_id)
+
+    channel = channels[0]
+
+    assert channel.packages
+    assert channel.packages[0].name == "test-package"
+    assert channel.packages[0].members[0].user.username == user.username
+    assert (
+        channel.packages[0].package_versions[0].version == "0.1"
+        or channel.packages[0].package_versions[0].version == "0.2"
+    )
+    assert (
+        channel.packages[0].package_versions[1].version == "0.1"
+        or channel.packages[0].package_versions[1].version == "0.2"
+    )
+
+    repodata = pkgstore.serve_path(channel.name, "linux-64/repodata.json")
+    repodata = json.load(repodata)
+    assert repodata
+    assert len(repodata["packages"]) == 2
+    assert set(repodata["packages"].keys()) == set(package_filenames)
+
+def test_check_doorstep(
+    config,
+    user,
+    package_files,
+    db,
+    dao,
+    pkgstore: PackageStore,
+    package_filenames,
+    remove_package_versions,
+):
+    user_id = user.id
+    packages = check_doorstep(dao, config, user_id)
+    assert len(packages) == 1
 
 def test_validate_packages(
     config,

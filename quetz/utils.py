@@ -2,7 +2,6 @@
 # Distributed under the terms of the Modified BSD License.
 
 import bz2
-import distutils
 import gzip
 import hashlib
 import inspect
@@ -22,6 +21,7 @@ from urllib.parse import unquote
 
 from sqlalchemy import String, and_, cast, collate, not_, or_
 
+from .config import strtobool
 from .db_models import Channel, Package, PackageVersion, User
 
 
@@ -214,7 +214,7 @@ def apply_custom_query(search_type, db, keywords, filters):
                     each_val_condition = Channel.description.contains(each_val)
                 elif key == "private":
                     each_val_condition = Channel.private.is_(
-                        bool(distutils.util.strtobool(each_val))
+                        bool(strtobool(each_val))
                     )
                 else:
                     raise KeyError(key)
