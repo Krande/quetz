@@ -93,7 +93,7 @@ class PackageStore(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_channels_config(self, channel_json_file="channel_config.json"):
+    def get_backup_json(self):
         pass
 
     @abc.abstractmethod
@@ -169,6 +169,7 @@ class LocalStore(PackageStore):
         self.redirect_secret = config.get("redirect_secret")
         self.redirect_expiration = config.get("redirect_expiration")
         self.doorstep_dir = config.get("doorstep_dir")
+        self.backup_json = config.get("backup_json")
 
         super().__init__()
 
@@ -253,7 +254,8 @@ class LocalStore(PackageStore):
 
     def list_channels(self) -> List[str]:
         for ch in self.fs.ls(self.channels_dir):
-            yield ch
+            if self.fs.isdir(ch):
+                yield path.split(ch)[-1]
 
     def get_doorstep_files(self) -> list[tuple[str, str, str]]:
         for root, directories, files in self.fs.walk(self.doorstep_dir):
@@ -266,12 +268,10 @@ class LocalStore(PackageStore):
         for fi_name, channel_name, filepath in self.get_doorstep_files():
             self.fs.delete(filepath)
 
-    def get_channels_config(self, channel_json_file="channel_config.json") -> dict | None:
-        channel_json_file_path = f"{channel_json_file}"
-
-        if self.fs.exists(channel_json_file_path) is False:
+    def get_backup_json(self) -> dict | None:
+        if self.fs.exists(self.backup_json) is False:
             return None
-        with self.fs.open(channel_json_file_path) as pkg:
+        with self.fs.open(self.backup_json) as pkg:
             return json.loads(pkg.read())
 
     def url(self, channel: str, src: str, expires=0):
@@ -542,6 +542,7 @@ class AzureBlobStore(PackageStore):
 
         # Add directory for receiving packages through azure storage
         self.doorstep_dir = config["doorstep_dir"]
+        self.backup_json_path = config["backup_json_path"]
 
         super().__init__()
 
@@ -559,9 +560,9 @@ class AzureBlobStore(PackageStore):
     def _container_map(self, name):
         return f"{self.container_prefix}{name}{self.container_suffix}"
 
-    def get_channels_config(self, channel_json_file="channel_config.json") -> dict | None:
+    def get_backup_json(self) -> dict | None:
         """Returns a json describing the defaults per channel. ie. the description and if it is private"""
-        channel_json_file_path = f"{self.container_prefix}{channel_json_file}"
+        channel_json_file_path = f"{self.container_prefix}{self.backup_json_path}"
 
         with self._get_fs() as fs:
             if fs.exists(channel_json_file_path) is False:
@@ -572,8 +573,13 @@ class AzureBlobStore(PackageStore):
     def get_doorstep_files(self) -> Iterable[tuple[str, str, str]]:
         with self._get_fs() as fs:
             for fp in fs.find(self.doorstep_dir):
-                root, channel, fi = fp.split('/')
-                yield fi, channel, fp
+                res = fp.split('/')
+                if len(res) != 3:
+                    logger.debug('Skipping file %s in doorstep directory', fp)
+                    continue
+                root, channel, fi = res
+                if fi.endswith('.tar.bz2') or fi.endswith('.conda'):
+                    yield fi, channel, fp
 
     def clear_doorstep_files(self) -> None:
         with self._get_fs() as fs:

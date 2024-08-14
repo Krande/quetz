@@ -119,17 +119,26 @@ def test_check_doorstep(
     package_files,
     db,
     dao,
+    channel,
     pkgstore: PackageStore,
     package_filenames,
     remove_package_versions,
 ):
+
     user_id = user.id
+
+    reindex_all_packages_from_store(dao, config, user_id)
+    packages_before = channel.packages
+
     packages = check_doorstep(dao, config, user_id)
     assert len(packages) == 1
 
-    channel = dao.get_channel("channel0")
-    assert channel
-    assert channel.description == "Example Description 000"
+    packages_after = channel.packages
+
+    assert len(packages_after) - len(packages_before) == 1
+
+    assert packages_after[0].name == "test-package"
+    assert packages_after[1].name == "other-package"
 
 def test_validate_packages(
     config,

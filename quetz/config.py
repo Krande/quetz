@@ -137,6 +137,7 @@ class Config:
                 ConfigEntry("redirect_secret", str, default=""),
                 ConfigEntry("redirect_expiration", int, default="3600"),
                 ConfigEntry("doorstep_dir", str, default="imports"),
+                ConfigEntry("backup_json_path", str, default="backup.json"),
             ],
         ),
         ConfigSection(
@@ -161,6 +162,7 @@ class Config:
                 ConfigEntry("container_prefix", str, default=""),
                 ConfigEntry("container_suffix", str, default=""),
                 ConfigEntry("doorstep_dir", str, default="imports"),
+                ConfigEntry("backup_json_path", str, default="backup.json"),
             ],
             required=False,
         ),
@@ -515,6 +517,8 @@ class Config:
                     "conn_str": self.azure_blob_conn_str,
                     "container_prefix": self.azure_blob_container_prefix,
                     "container_suffix": self.azure_blob_container_suffix,
+                    "doorstep_dir": self.azure_blob_doorstep_dir,
+                    "backup_json_path": self.azure_blob_backup_json_path,
                 }
             )
         elif self.config.get("gcs"):
@@ -536,6 +540,8 @@ class Config:
                     "redirect_endpoint": self.local_store_redirect_endpoint,
                     "redirect_secret": self.local_store_redirect_secret,
                     "redirect_expiration": int(self.local_store_redirect_expiration),
+                    "doorstep_dir": self.local_store_doorstep_dir,
+                    "backup_json_path": self.local_store_backup_json_path,
                 }
             )
 

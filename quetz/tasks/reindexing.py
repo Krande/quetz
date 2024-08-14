@@ -133,11 +133,11 @@ def reindex_packages_from_store(
                     pkg_db.append(f"{pv.platform}/{pv.filename}")
             dao.db.commit()
     else:
-        channels_config = pkgstore.get_channels_config()
+        config_backup = pkgstore.get_backup_json()
         is_private = False
         description = "re-indexed from store"
-        if channels_config is not None:
-            channel_config = channels_config.get('channels', dict()).get(channel_name, dict())
+        if config_backup is not None:
+            channel_config = config_backup.get('channels', dict()).get(channel_name, dict())
             is_private = channel_config.get("private", is_private)
             description = channel_config.get("description", description)
 
@@ -210,26 +210,17 @@ def reindex_all_packages_from_store(
 
     return channels
 
-def _import_from_target(target, fi_name, channel_name, pkgstore, dao: Dao, user_id):
+def _import_from_target(target, fi_name, channel_name, pkgstore, dao: Dao) -> str | None:
     channel = dao.get_channel(channel_name)
     if channel is None:
-        channels_config = pkgstore.get_channels_config()
-        is_private = False
-        description = "re-indexed from store"
-        if channels_config is not None:
-            channel_config = channels_config.get('channels', dict()).get(channel_name, dict())
-            is_private = channel_config.get("private", is_private)
-            description = channel_config.get("description", description)
-
-        data = rest_models.Channel(
-            name=channel_name, description=description, private=is_private
-        )
-        dao.create_channel(data, user_id, "owner")
+        logger.error(f"Channel {channel_name} not found for package {fi_name}")
+        return None
 
     conda_info = CondaInfo(target, fi_name)
     target.seek(0)
     arch = conda_info.info['subdir']
     pkgstore.add_file(target.read(), channel_name, f"{arch}/{fi_name}")
+    return fi_name
 
 
 def check_doorstep(dao: Dao, config: Config, user_id, sync: bool = True):
@@ -239,12 +230,15 @@ def check_doorstep(dao: Dao, config: Config, user_id, sync: bool = True):
     logger.debug(f"Found {len(files)} files at your doorstep")
     user_id = uuid_to_bytes(user_id)
 
+    copied_files = []
     for fi_name, channel_name, filepath in files:
         with pkgstore.fs.open(filepath) as target:
-            _import_from_target(target, fi_name, channel_name, pkgstore, dao, user_id)
+            res = _import_from_target(target, fi_name, channel_name, pkgstore, dao)
+            if res:
+                copied_files.append(res)
 
     pkgstore.clear_doorstep_files()
 
     reindex_all_packages_from_store(dao, config, user_id, sync)
 
-    return files
+    return copied_files
