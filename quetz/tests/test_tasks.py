@@ -127,6 +127,10 @@ def test_check_doorstep(
     packages = check_doorstep(dao, config, user_id)
     assert len(packages) == 1
 
+    channel = dao.get_channel("channel0")
+    assert channel
+    assert channel.description == "Example Description 000"
+
 def test_validate_packages(
     config,
     user,

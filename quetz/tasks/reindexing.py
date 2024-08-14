@@ -5,6 +5,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from rq.local import Local
 from sqlalchemy.exc import IntegrityError
 
 from quetz import authorization, rest_models
@@ -14,6 +15,7 @@ from quetz.dao import Dao
 from quetz.exceptions import PackageError
 
 from .indexing import update_indexes
+from ..pkgstores import LocalStore, AzureBlobStore
 
 logger = logging.getLogger("quetz.tasks")
 
@@ -208,9 +210,41 @@ def reindex_all_packages_from_store(
 
     return channels
 
+def _import_from_target(target, fi_name, channel_name, pkgstore, dao: Dao, user_id):
+    channel = dao.get_channel(channel_name)
+    if channel is None:
+        channels_config = pkgstore.get_channels_config()
+        is_private = False
+        description = "re-indexed from store"
+        if channels_config is not None:
+            channel_config = channels_config.get('channels', dict()).get(channel_name, dict())
+            is_private = channel_config.get("private", is_private)
+            description = channel_config.get("description", description)
+
+        data = rest_models.Channel(
+            name=channel_name, description=description, private=is_private
+        )
+        dao.create_channel(data, user_id, "owner")
+
+    conda_info = CondaInfo(target, fi_name)
+    target.seek(0)
+    arch = conda_info.info['subdir']
+    pkgstore.add_file(target.read(), channel_name, f"{arch}/{fi_name}")
+
+
 def check_doorstep(dao: Dao, config: Config, user_id, sync: bool = True):
     pkgstore = config.get_package_store()
-    doorstep_dir = "imports"
-    files = list(pkgstore.get_doorstep_files(doorstep_dir))
+
+    files = list(pkgstore.get_doorstep_files())
     logger.debug(f"Found {len(files)} files at your doorstep")
+    user_id = uuid_to_bytes(user_id)
+
+    for fi_name, channel_name, filepath in files:
+        with pkgstore.fs.open(filepath) as target:
+            _import_from_target(target, fi_name, channel_name, pkgstore, dao, user_id)
+
+    pkgstore.clear_doorstep_files()
+
+    reindex_all_packages_from_store(dao, config, user_id, sync)
+
     return files

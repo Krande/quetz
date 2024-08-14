@@ -41,6 +41,7 @@ dependencies:
   - typing_extensions
   - adlfs>=2024.7
   - azure-storage-blob>=12.22.0
+  - quetz-frontend
   - importlib_metadata
   - pre-commit
   - pytest

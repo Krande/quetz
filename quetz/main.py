@@ -83,7 +83,7 @@ from quetz.jobs import api as jobs_api
 from quetz.jobs import rest_models as jobs_rest
 from quetz.metrics import api as metrics_api
 from quetz.metrics.middleware import DOWNLOAD_COUNT, UPLOAD_COUNT
-from quetz.rest_models import ChannelActionEnum, CPRole
+from quetz.rest_models import ChannelActionEnum, CPRole, Profile
 from quetz.tasks import indexing
 from quetz.tasks.common import Task
 from quetz.tasks.mirror import RemoteRepository, download_remote_file
@@ -131,6 +131,7 @@ download_counts: Counter = Counter()
 DOWNLOAD_INCREMENT_DELAY_SECONDS = 10
 DOWNLOAD_INCREMENT_MAX_DOWNLOADS = 50
 
+
 @app.on_event("startup")
 def start_reindex_packages_from_pkg_store():
     from .tasks.reindexing import reindex_all_packages_from_store
@@ -140,10 +141,14 @@ def start_reindex_packages_from_pkg_store():
     with TicToc("Reindex packages"):
         with db_manager(config) as db:
             dao = get_dao(db)
-            admin = dao.create_user_with_role('system', 'admin')
+            admin = dao.get_user_by_username('system')
+            if admin is None:
+                admin = dao.create_user_with_profile(username='system', role='admin', provider='other', identity_id="XXX",
+                                                 name="system", avatar_url="https://localhost")
 
             reindex_all_packages_from_store(dao, config, user_id=admin.id)
-            dao.delete_user(admin.id)
+            # dao.delete_user(admin.id)
+
 
 class CondaTokenMiddleware(BaseHTTPMiddleware):
     """Removes /t/<QUETZ_API_KEY> prefix, adds QUETZ_APY_KEY to the headers and passes
@@ -186,10 +191,11 @@ app.add_middleware(
 if config.configured_section("profiling") and config.profiling_enable_sampling:
     from pyinstrument.profiler import Profiler
 
+
     @app.middleware("http")
     async def profile_request(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
+            request: Request,
+            call_next: Callable[[Request], Awaitable[Response]],
     ):
         if not request.query_params.get("profile", False):
             return await call_next(request)
@@ -201,7 +207,6 @@ if config.configured_section("profiling") and config.profiling_enable_sampling:
         await call_next(request)
         profiler.stop()
         return HTMLResponse(profiler.output_html())
-
 
 pkgstore = config.get_package_store()
 
@@ -222,7 +227,6 @@ builtin_authenticators: List[Type[BaseAuthenticator]] = [
 plugin_authenticators: List[Type[BaseAuthenticator]] = [
     ep.load() for ep in entry_points().select(group="quetz.authenticator")
 ]
-
 
 auth_registry = AuthenticatorRegistry()
 auth_registry.set_router(app)
@@ -285,7 +289,7 @@ async def route_logout(request):
 
 @api_router.get("/dummylogin/{username}", tags=["dev"])
 def dummy_login(
-    username: str, dao: Dao = Depends(get_dao), session=Depends(get_session)
+        username: str, dao: Dao = Depends(get_dao), session=Depends(get_session)
 ):
     user = dao.get_user_by_username(username)
     if user is None:
@@ -303,9 +307,9 @@ def dummy_login(
 
 @api_router.get("/me", response_model=rest_models.Profile, tags=["users"])
 async def me(
-    session: dict = Depends(get_session),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        session: dict = Depends(get_session),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     """Returns your quetz profile"""
 
@@ -342,9 +346,9 @@ def get_users_handler(dao, q, auth, skip, limit):
 
 @api_router.get("/users", response_model=List[rest_models.User], tags=["users"])
 def get_users(
-    dao: Dao = Depends(get_dao),
-    q: str = None,
-    auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
+        q: str = None,
+        auth: authorization.Rules = Depends(get_rules),
 ):
     return get_users_handler(dao, q, auth, 0, -1)
 
@@ -355,20 +359,20 @@ def get_users(
     tags=["users"],
 )
 def get_paginated_users(
-    dao: Dao = Depends(get_dao),
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
-    q: str = None,
-    auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
+        q: str = None,
+        auth: authorization.Rules = Depends(get_rules),
 ):
     return get_users_handler(dao, q, auth, skip, limit)
 
 
 @api_router.get("/users/{username}", response_model=rest_models.User, tags=["users"])
 def get_user(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user = dao.get_user_by_username(username)
 
@@ -388,9 +392,9 @@ def get_user(
     tags=["users"],
 )
 def get_user_channels(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     return list_user_channels(username, dao, auth, 0, -1)
 
@@ -401,9 +405,9 @@ def get_user_channels(
     tags=["users"],
 )
 def get_user_packages(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     return list_user_packages(username, dao, auth, 0, -1)
 
@@ -414,11 +418,11 @@ def get_user_packages(
     tags=["users"],
 )
 def get_paginated_user_channels(
-    username: str,
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     return list_user_channels(username, dao, auth, skip, limit)
 
@@ -429,21 +433,21 @@ def get_paginated_user_channels(
     tags=["users"],
 )
 def get_paginated_user_packages(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
 ):
     return list_user_packages(username, dao, auth, skip, limit)
 
 
 def list_user_packages(
-    username: str,
-    dao: Dao,
-    auth: authorization.Rules,
-    skip: int,
-    limit: int,
+        username: str,
+        dao: Dao,
+        auth: authorization.Rules,
+        skip: int,
+        limit: int,
 ):
     user = dao.get_user_by_username(username)
 
@@ -458,7 +462,7 @@ def list_user_packages(
 
 
 def list_user_channels(
-    username: str, dao: Dao, auth: authorization.Rules, skip: int, limit: int
+        username: str, dao: Dao, auth: authorization.Rules, skip: int, limit: int
 ):
     user = dao.get_user_by_username(username)
 
@@ -476,9 +480,9 @@ def list_user_channels(
 
 @api_router.delete("/users/{username}", tags=["users"])
 def delete_user(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user = dao.get_user_by_username(username)
 
@@ -497,9 +501,9 @@ def delete_user(
     tags=["users"],
 )
 def get_user_role(
-    username: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user = dao.get_user_by_username(username)
 
@@ -515,10 +519,10 @@ def get_user_role(
 
 @api_router.put("/users/{username}/role", tags=["users"])
 def set_user_role(
-    username: str,
-    role: rest_models.UserOptionalRole,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        role: rest_models.UserOptionalRole,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user = dao.get_user_by_username(username)
 
@@ -536,10 +540,10 @@ def set_user_role(
     "/channels", response_model=List[rest_models.ChannelExtra], tags=["channels"]
 )
 def get_channels(
-    public: bool = True,
-    dao: Dao = Depends(get_dao),
-    q: str = None,
-    auth: authorization.Rules = Depends(get_rules),
+        public: bool = True,
+        dao: Dao = Depends(get_dao),
+        q: str = None,
+        auth: authorization.Rules = Depends(get_rules),
 ):
     """List all channels"""
 
@@ -553,12 +557,12 @@ def get_channels(
     tags=["channels"],
 )
 def get_paginated_channels(
-    dao: Dao = Depends(get_dao),
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
-    public: bool = True,
-    q: str = None,
-    auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
+        public: bool = True,
+        q: str = None,
+        auth: authorization.Rules = Depends(get_rules),
 ):
     """List all channels, as a paginated response"""
     user_id = auth.get_user()
@@ -580,13 +584,13 @@ def get_channel(channel: db_models.Channel = Depends(get_channel_allow_proxy)):
     tags=["channels"],
 )
 def post_channel_mirror(
-    request: Request,
-    mirror: rest_models.ChannelMirrorBase,
-    channel_name: str,
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
-    remote_session: requests.Session = Depends(get_remote_session),
+        request: Request,
+        mirror: rest_models.ChannelMirrorBase,
+        channel_name: str,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
+        remote_session: requests.Session = Depends(get_remote_session),
 ):
     auth.assert_register_mirror(channel_name)
 
@@ -635,10 +639,10 @@ def post_channel_mirror(
     tags=["channels"],
 )
 def get_channel_mirrors(
-    channel_name: str,
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
+        channel_name: str,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
 ):
     return channel.mirrors
 
@@ -648,11 +652,11 @@ def get_channel_mirrors(
     tags=["channels"],
 )
 def delete_channel_mirror(
-    channel_name: str,
-    mirror_id: str,
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
+        channel_name: str,
+        mirror_id: str,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
 ):
     auth.assert_unregister_mirror(channel_name)
     dao.delete_channel_mirror(channel_name, mirror_id)
@@ -663,10 +667,10 @@ def delete_channel_mirror(
     tags=["channels"],
 )
 def delete_channel(
-    channel: db_models.Channel = Depends(get_channel_allow_proxy),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
-    config=Depends(get_config),
+        channel: db_models.Channel = Depends(get_channel_allow_proxy),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
+        config=Depends(get_config),
 ):
     auth.assert_delete_channel(channel)
     dao.delete_channel(channel.name)
@@ -683,10 +687,10 @@ def delete_channel(
     "/channels/{channel_name}/actions", tags=["channels"], response_model=jobs_rest.Job
 )
 def put_mirror_channel_actions(
-    action: rest_models.ChannelAction,
-    channel: db_models.Channel = Depends(get_channel_allow_proxy),
-    dao: Dao = Depends(get_dao),
-    task: Task = Depends(get_tasks_worker),
+        action: rest_models.ChannelAction,
+        channel: db_models.Channel = Depends(get_channel_allow_proxy),
+        dao: Dao = Depends(get_dao),
+        task: Task = Depends(get_tasks_worker),
 ):
     new_job = task.execute_channel_action(
         action.action,
@@ -699,16 +703,16 @@ def put_mirror_channel_actions(
 
 @api_router.post("/channels", status_code=201, tags=["channels"])
 def post_channel(
-    request: Request,
-    new_channel: rest_models.Channel,
-    background_tasks: BackgroundTasks,
-    mirror_api_key: Optional[str] = None,
-    register_mirror: bool = False,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
-    task: Task = Depends(get_tasks_worker),
-    config=Depends(get_config),
-    session: requests.Session = Depends(get_remote_session),
+        request: Request,
+        new_channel: rest_models.Channel,
+        background_tasks: BackgroundTasks,
+        mirror_api_key: Optional[str] = None,
+        register_mirror: bool = False,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
+        task: Task = Depends(get_tasks_worker),
+        config=Depends(get_config),
+        session: requests.Session = Depends(get_remote_session),
 ):
     user_id = auth.assert_user()
 
@@ -799,11 +803,11 @@ def post_channel(
     response_model=rest_models.ChannelBase,
 )
 def patch_channel(
-    channel_data: rest_models.Channel,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    db=Depends(get_db),
+        channel_data: rest_models.Channel,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        db=Depends(get_db),
 ):
     auth.assert_update_channel_info(channel.name)
 
@@ -839,9 +843,9 @@ def patch_channel(
     tags=["packages"],
 )
 def get_packages(
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    dao: Dao = Depends(get_dao),
-    q: Optional[str] = None,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        dao: Dao = Depends(get_dao),
+        q: Optional[str] = None,
 ):
     """
     Retrieve all packages in a channel, optionally matching a query `q`.
@@ -856,12 +860,12 @@ def get_packages(
     tags=["packages"],
 )
 def get_paginated_packages(
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    dao: Dao = Depends(get_dao),
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
-    q: Optional[str] = None,
-    order_by: Optional[str] = None,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        dao: Dao = Depends(get_dao),
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
+        q: Optional[str] = None,
+        order_by: Optional[str] = None,
 ):
     """
     Retrieve all packages in a channel.
@@ -886,11 +890,11 @@ def get_package(package: db_models.Package = Depends(get_package_or_fail)):
     tags=["packages"],
 )
 def delete_package(
-    background_tasks: BackgroundTasks,
-    package: db_models.Package = Depends(get_package_or_fail),
-    db=Depends(get_db),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
+        background_tasks: BackgroundTasks,
+        package: db_models.Package = Depends(get_package_or_fail),
+        db=Depends(get_db),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
 ):
     auth.assert_package_delete(package)
 
@@ -924,12 +928,12 @@ def delete_package(
     "/channels/{channel_name}/packages", status_code=201, tags=["packages"]
 )
 def post_package(
-    new_package: rest_models.Package,
-    channel: db_models.Channel = Depends(
-        ChannelChecker(allow_proxy=False, allow_mirror=False),
-    ),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
+        new_package: rest_models.Package,
+        channel: db_models.Channel = Depends(
+            ChannelChecker(allow_proxy=False, allow_mirror=False),
+        ),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
 ):
     # here we use the owner_id as user_id. In case the authentication
     # was done using an API Key, we want to attribute the uploaded package
@@ -959,16 +963,16 @@ def post_package(
     tags=["packages"],
 )
 def copy_package(
-    source_channel: str,
-    source_package: str,
-    subdir: str,
-    filename: str,
-    background_tasks: BackgroundTasks,
-    channel: db_models.Channel = Depends(
-        ChannelChecker(allow_proxy=False, allow_mirror=False),
-    ),
-    auth: authorization.Rules = Depends(get_rules),
-    dao: Dao = Depends(get_dao),
+        source_channel: str,
+        source_package: str,
+        subdir: str,
+        filename: str,
+        background_tasks: BackgroundTasks,
+        channel: db_models.Channel = Depends(
+            ChannelChecker(allow_proxy=False, allow_mirror=False),
+        ),
+        auth: authorization.Rules = Depends(get_rules),
+        dao: Dao = Depends(get_dao),
 ):
     user_id = auth.assert_owner()
 
@@ -1048,9 +1052,9 @@ def copy_package(
     tags=["channels"],
 )
 def get_channel_members(
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     auth.assert_list_channel_members(channel.name)
     member_list = dao.get_channel_members(channel.name)
@@ -1060,11 +1064,11 @@ def get_channel_members(
 
 @api_router.post("/channels/{channel_name}/members", status_code=201, tags=["channels"])
 def post_channel_member(
-    new_member: rest_models.PostMember,
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    dao: Dao = Depends(get_dao),
-    db=Depends(get_db),
-    auth: authorization.Rules = Depends(get_rules),
+        new_member: rest_models.PostMember,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        dao: Dao = Depends(get_dao),
+        db=Depends(get_db),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     if not dao.get_user_by_username(new_member.username):
         raise HTTPException(
@@ -1086,11 +1090,11 @@ def post_channel_member(
 
 @api_router.delete("/channels/{channel_name}/members", tags=["channels"])
 def delete_channel_member(
-    username: str,
-    channel: db_models.Channel = Depends(get_channel_or_fail),
-    dao: Dao = Depends(get_dao),
-    db=Depends(get_db),
-    auth: authorization.Rules = Depends(get_rules),
+        username: str,
+        channel: db_models.Channel = Depends(get_channel_or_fail),
+        dao: Dao = Depends(get_dao),
+        db=Depends(get_db),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     if not dao.get_user_by_username(username):
         raise HTTPException(
@@ -1119,8 +1123,8 @@ def delete_channel_member(
     tags=["packages"],
 )
 def get_package_members(
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
 ):
     member_list = dao.get_package_members(package.channel.name, package.name)
 
@@ -1133,10 +1137,10 @@ def get_package_members(
     tags=["packages"],
 )
 def post_package_member(
-    new_member: rest_models.PostMember,
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        new_member: rest_models.PostMember,
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     auth.assert_add_package_member(package.channel.name, package.name, new_member.role)
 
@@ -1161,10 +1165,10 @@ def post_package_member(
     tags=["packages"],
 )
 def get_package_versions(
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
-    time_created__ge: datetime.datetime = None,
-    version_match_str: str = None,
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
+        time_created__ge: datetime.datetime = None,
+        version_match_str: str = None,
 ):
     version_profile_list = dao.get_package_versions(
         package, time_created__ge, version_match_str
@@ -1184,12 +1188,12 @@ def get_package_versions(
     tags=["packages"],
 )
 def get_paginated_package_versions(
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
-    skip: int = 0,
-    limit: int = PAGINATION_LIMIT,
-    time_created__ge: datetime.datetime = None,
-    version_match_str: str = None,
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
+        skip: int = 0,
+        limit: int = PAGINATION_LIMIT,
+        time_created__ge: datetime.datetime = None,
+        version_match_str: str = None,
 ):
     version_profile_list = dao.get_package_versions(
         package, time_created__ge, version_match_str, skip, limit
@@ -1212,12 +1216,12 @@ def get_paginated_package_versions(
     tags=["packages"],
 )
 def get_package_version(
-    platform: str,
-    filename: str,
-    package_name: str,
-    channel_name: str,
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
+        platform: str,
+        filename: str,
+        package_name: str,
+        channel_name: str,
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
 ):
     version = dao.get_package_version_by_filename(
         channel_name, package_name, filename, platform
@@ -1237,14 +1241,14 @@ def get_package_version(
     tags=["packages"],
 )
 def delete_package_version(
-    platform: str,
-    filename: str,
-    channel_name: str,
-    package_name: str,
-    background_tasks: BackgroundTasks,
-    dao: Dao = Depends(get_dao),
-    db=Depends(get_db),
-    auth: authorization.Rules = Depends(get_rules),
+        platform: str,
+        filename: str,
+        channel_name: str,
+        package_name: str,
+        background_tasks: BackgroundTasks,
+        dao: Dao = Depends(get_dao),
+        db=Depends(get_db),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     version = dao.get_package_version_by_filename(
         channel_name, package_name, filename, platform
@@ -1282,9 +1286,9 @@ def delete_package_version(
     "/packages/search/", response_model=List[rest_models.PackageSearch], tags=["search"]
 )
 def search(
-    q: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        q: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user_id = auth.get_user()
     keywords, filters = parse_query("package", q)
@@ -1295,9 +1299,9 @@ def search(
     "/channels/search/", response_model=List[rest_models.ChannelSearch], tags=["search"]
 )
 def channel_search(
-    q: str,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        q: str,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     user_id = auth.get_user()
     keywords, filters = parse_query("channel", q)
@@ -1306,7 +1310,7 @@ def channel_search(
 
 @api_router.get("/api-keys", response_model=List[rest_models.ApiKey], tags=["API keys"])
 def get_api_keys(
-    dao: Dao = Depends(get_dao), auth: authorization.Rules = Depends(get_rules)
+        dao: Dao = Depends(get_dao), auth: authorization.Rules = Depends(get_rules)
 ):
     """Get API keys for current user"""
 
@@ -1366,9 +1370,9 @@ def get_api_keys(
     "/api-keys", status_code=201, tags=["API keys"], response_model=rest_models.ApiKey
 )
 def post_api_key(
-    api_key: rest_models.BaseApiKey,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        api_key: rest_models.BaseApiKey,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     auth.assert_create_api_key_roles(api_key.roles)
 
@@ -1423,10 +1427,10 @@ def post_api_key(
 
 @api_router.delete("/api-keys/{key}", tags=["API keys"])
 def delete_api_keys(
-    key: str,
-    dao: Dao = Depends(get_dao),
-    db: Session = Depends(get_db),
-    auth: authorization.Rules = Depends(get_rules),
+        key: str,
+        dao: Dao = Depends(get_dao),
+        db: Session = Depends(get_db),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     api_key = dao.get_api_key(key)
 
@@ -1448,15 +1452,15 @@ def delete_api_keys(
     tags=["files"],
 )
 def post_file_to_package(
-    background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...),
-    force: Optional[bool] = Form(None),
-    package: db_models.Package = Depends(get_package_or_fail),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
-    channel: db_models.Channel = Depends(
-        ChannelChecker(allow_proxy=False, allow_mirror=False),
-    ),
+        background_tasks: BackgroundTasks,
+        files: List[UploadFile] = File(...),
+        force: Optional[bool] = Form(None),
+        package: db_models.Package = Depends(get_package_or_fail),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
+        channel: db_models.Channel = Depends(
+            ChannelChecker(allow_proxy=False, allow_mirror=False),
+        ),
 ):
     handle_package_files(package.channel, files, dao, auth, force, package=package)
     dao.update_channel_size(package.channel_name)
@@ -1470,14 +1474,14 @@ def post_file_to_package(
     "/channels/{channel_name}/upload/{filename}", status_code=201, tags=["upload"]
 )
 async def post_upload(
-    background_tasks: BackgroundTasks,
-    request: Request,
-    channel_name: str,
-    filename: str,
-    sha256: str,
-    force: bool = False,
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        background_tasks: BackgroundTasks,
+        request: Request,
+        channel_name: str,
+        filename: str,
+        sha256: str,
+        force: bool = False,
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     logger.debug(
         f"Uploading file {filename} with checksum {sha256} to channel {channel_name}"
@@ -1553,14 +1557,14 @@ async def post_upload(
 
 @api_router.post("/channels/{channel_name}/files/", status_code=201, tags=["files"])
 def post_file_to_channel(
-    background_tasks: BackgroundTasks,
-    files: List[UploadFile] = File(...),
-    force: Optional[bool] = Form(None),
-    channel: db_models.Channel = Depends(
-        ChannelChecker(allow_proxy=False, allow_mirror=False)
-    ),
-    dao: Dao = Depends(get_dao),
-    auth: authorization.Rules = Depends(get_rules),
+        background_tasks: BackgroundTasks,
+        files: List[UploadFile] = File(...),
+        force: Optional[bool] = Form(None),
+        channel: db_models.Channel = Depends(
+            ChannelChecker(allow_proxy=False, allow_mirror=False)
+        ),
+        dao: Dao = Depends(get_dao),
+        auth: authorization.Rules = Depends(get_rules),
 ):
     handle_package_files(channel, files, dao, auth, force)
 
@@ -1624,13 +1628,13 @@ def _extract_and_upload_package(file, channel_name, channel_proxylist, force: bo
 
 
 def handle_package_files(
-    channel,
-    files,
-    dao,
-    auth,
-    force,
-    package=None,
-    is_mirror_op=False,
+        channel,
+        files,
+        dao,
+        auth,
+        force,
+        package=None,
+        is_mirror_op=False,
 ):
     # here we use the owner_id as user_id. In case the authentication
     # was done using an API Key, we want to attribute the uploaded package
@@ -1857,8 +1861,8 @@ def start_sync_download_counts():
                 now = datetime.datetime.utcnow()
                 if n_total_downloads < DOWNLOAD_INCREMENT_MAX_DOWNLOADS:
                     if not n_total_downloads or (
-                        last_download_sync
-                        and (last_download_sync + increment_delay) > now
+                            last_download_sync
+                            and (last_download_sync + increment_delay) > now
                     ):
                         await asyncio.sleep(wait_time)
                         continue
@@ -1891,11 +1895,11 @@ async def stop_sync_download_counts():
 @app.head("/get/{channel_name}/{path:path}")
 @app.get("/get/{channel_name}/{path:path}")
 def serve_path(
-    path,
-    channel: db_models.Channel = Depends(get_channel_allow_proxy),
-    accept_encoding: Optional[str] = Header(None),
-    session=Depends(get_remote_session),
-    dao: Dao = Depends(get_dao),
+        path,
+        channel: db_models.Channel = Depends(get_channel_allow_proxy),
+        accept_encoding: Optional[str] = Header(None),
+        session=Depends(get_remote_session),
+        dao: Dao = Depends(get_dao),
 ):
     chunk_size = 10_000
 
@@ -1936,7 +1940,7 @@ def serve_path(
                 download_remote_file(repository, pkgstore, channel.name, path)
 
     if (
-        is_package_request or pkgstore.kind == "LocalStore"
+            is_package_request or pkgstore.kind == "LocalStore"
     ) and pkgstore.support_redirect:
         return RedirectResponse(pkgstore.url(channel.name, path))
 
@@ -1990,10 +1994,10 @@ def serve_path(
 
 @app.get("/get/{channel_name}")
 def serve_channel_index(
-    channel: db_models.Channel = Depends(get_channel_allow_proxy),
-    accept_encoding: Optional[str] = Header(None),
-    session=Depends(get_remote_session),
-    dao: Dao = Depends(get_dao),
+        channel: db_models.Channel = Depends(get_channel_allow_proxy),
+        accept_encoding: Optional[str] = Header(None),
+        session=Depends(get_remote_session),
+        dao: Dao = Depends(get_dao),
 ):
     return serve_path("index.html", channel, accept_encoding, session, dao)
 

@@ -1,0 +1,9 @@
+{
+  "version": "1.0",
+  "channels": {
+    "channel0": {
+      "description": "Example Description 000",
+      "private": false
+    }
+  }
+}

@@ -136,6 +136,7 @@ class Config:
                 ConfigEntry("redirect_endpoint", str, default="/files"),
                 ConfigEntry("redirect_secret", str, default=""),
                 ConfigEntry("redirect_expiration", int, default="3600"),
+                ConfigEntry("doorstep_dir", str, default="imports"),
             ],
         ),
         ConfigSection(
@@ -159,6 +160,7 @@ class Config:
                 ConfigEntry("conn_str", str, default=""),
                 ConfigEntry("container_prefix", str, default=""),
                 ConfigEntry("container_suffix", str, default=""),
+                ConfigEntry("doorstep_dir", str, default="imports"),
             ],
             required=False,
         ),

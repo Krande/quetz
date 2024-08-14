@@ -85,7 +85,15 @@ class PackageStore(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_doorstep_files(self, doorstep_dir: str) -> Iterable[tuple[str, str, str]]:
+    def get_doorstep_files(self) -> Iterable[tuple[str, str, str]]:
+        pass
+
+    @abc.abstractmethod
+    def clear_doorstep_files(self) -> None:
+        pass
+
+    @abc.abstractmethod
+    def get_channels_config(self, channel_json_file="channel_config.json"):
         pass
 
     @abc.abstractmethod
@@ -102,7 +110,7 @@ class PackageStore(abc.ABC):
 
     @abc.abstractmethod
     def add_file(
-        self, data: Union[str, bytes], channel: str, destination: StrPath
+            self, data: Union[str, bytes], channel: str, destination: StrPath
     ) -> None:
         pass
 
@@ -160,6 +168,7 @@ class LocalStore(PackageStore):
         self.redirect_endpoint = config["redirect_endpoint"]
         self.redirect_secret = config.get("redirect_secret")
         self.redirect_expiration = config.get("redirect_expiration")
+        self.doorstep_dir = config.get("doorstep_dir")
 
         super().__init__()
 
@@ -246,13 +255,24 @@ class LocalStore(PackageStore):
         for ch in self.fs.ls(self.channels_dir):
             yield ch
 
-    def get_doorstep_files(self, doorstep_dir: str) -> list[tuple[str, str, str]]:
-        for root, directories, files in self.fs.walk(doorstep_dir):
+    def get_doorstep_files(self) -> list[tuple[str, str, str]]:
+        for root, directories, files in self.fs.walk(self.doorstep_dir):
             for fi in files:
                 if self.fs.isfile(fi):
                     channel = root.split('/')[-1]
-                    yield fi, channel, root
+                    yield fi, channel, path.join(root, fi)
 
+    def clear_doorstep_files(self) -> None:
+        for fi_name, channel_name, filepath in self.get_doorstep_files():
+            self.fs.delete(filepath)
+
+    def get_channels_config(self, channel_json_file="channel_config.json") -> dict | None:
+        channel_json_file_path = f"{channel_json_file}"
+
+        if self.fs.exists(channel_json_file_path) is False:
+            return None
+        with self.fs.open(channel_json_file_path) as pkg:
+            return json.loads(pkg.read())
 
     def url(self, channel: str, src: str, expires=0):
         if self.redirect_enabled:
@@ -519,6 +539,10 @@ class AzureBlobStore(PackageStore):
 
         self.container_prefix = config["container_prefix"]
         self.container_suffix = config["container_suffix"]
+
+        # Add directory for receiving packages through azure storage
+        self.doorstep_dir = config["doorstep_dir"]
+
         super().__init__()
 
     @property
@@ -535,21 +559,26 @@ class AzureBlobStore(PackageStore):
     def _container_map(self, name):
         return f"{self.container_prefix}{name}{self.container_suffix}"
 
-    def get_channels_config(self) -> dict | None:
+    def get_channels_config(self, channel_json_file="channel_config.json") -> dict | None:
         """Returns a json describing the defaults per channel. ie. the description and if it is private"""
-        channel_json_file = "channel_config.json"
         channel_json_file_path = f"{self.container_prefix}{channel_json_file}"
+
         with self._get_fs() as fs:
             if fs.exists(channel_json_file_path) is False:
                 return None
             with fs.open(channel_json_file_path) as pkg:
                 return json.loads(pkg.read())
 
-    def get_doorstep_files(self, doorstep_dir) -> list[tuple[str, str, str]]:
+    def get_doorstep_files(self) -> Iterable[tuple[str, str, str]]:
         with self._get_fs() as fs:
-            for fp in fs.find(doorstep_dir):
-                channel, fi = fp.split('/')
+            for fp in fs.find(self.doorstep_dir):
+                root, channel, fi = fp.split('/')
                 yield fi, channel, fp
+
+    def clear_doorstep_files(self) -> None:
+        with self._get_fs() as fs:
+            for fi_name, channel_name, filepath in self.get_doorstep_files():
+                fs.delete(filepath)
 
     def create_channel(self, name):
         """Create the container if one doesn't already exist
